@@ -1,0 +1,31 @@
+[package]
+name = "chomik"
+description = "To hamster"
+authors = ["Jaxydog", "RemasteredArch"]
+version = "0.1.0"
+readme = true
+license = "GPL-3.0-or-later"
+
+repository.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[workspace]
+members = ["lib/*"]
+resolver = "3"
+
+package.repository = "https://github.com/ArchitecturalDogSoftware/chomik"
+package.edition = "2024"
+package.publish = false
+
+[workspace.lints]
+clippy.nursery = { level = "warn", priority = -1 }
+clippy.pedantic = { level = "warn", priority = -1 }
+clippy.cargo = { level = "warn", priority = -1 }
+
+[workspace.dependencies]
+
+[dependencies]

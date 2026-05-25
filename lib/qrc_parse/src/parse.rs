@@ -23,8 +23,21 @@ macro_rules! read {
     };
 }
 
-const fn is_zlib(addr: u16) -> bool {
-    addr == 0x789C
+pub const SUPPORTED_VERSIONS: std::ops::Range<u32> = 1 .. 2;
+
+const fn is_zlib(magic: u16) -> bool {
+    const ZLIB_MAGIC_NUMBERS: [u16; 8] = [0x78_01, 0x78_5E, 0x78_9C, 0x78_DA, 0x78_20, 0x78_7D, 0x78_BB, 0x78_F9];
+
+    let mut i = 0;
+    while i < ZLIB_MAGIC_NUMBERS.len() {
+        if magic == ZLIB_MAGIC_NUMBERS[i] {
+            return true;
+        }
+
+        i += 1;
+    }
+
+    false
 }
 
 pub trait Parse: Sized {
@@ -39,6 +52,19 @@ pub trait Parse: Sized {
 
         Ok(out.into_boxed_slice())
     }
+}
+
+#[derive(Error, Debug)]
+#[non_exhaustive]
+pub enum ParseError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    // Should this just be the invalid data I/O error?
+    #[error("opening bytes did not match the expected magic number")]
+    MagicMismatch,
+    /// The Qt resource file format version was not contained within [`SUPPORTED_VERSIONS`];
+    #[error("unsupported Qt resource file format version")]
+    UnsupportedVersion,
 }
 
 #[derive(Debug)]
@@ -66,7 +92,15 @@ impl Parse for Header {
 
                 magic
             },
-            version: read!(input, u32),
+            version: {
+                let version = read!(input, u32);
+
+                if !SUPPORTED_VERSIONS.contains(&version) {
+                    return Err(ParseError::UnsupportedVersion);
+                }
+
+                version
+            },
             tree_addr: read!(input, u32),
             files_addr: read!(input, u32),
             names_addr: read!(input, u32),
@@ -203,14 +237,6 @@ pub struct QrcFile {
     files: Box<[Located<File>]>,
     names: Box<[Located<Filename>]>,
     tree: Box<[Located<Node>]>,
-}
-
-#[derive(Error, Debug)]
-pub enum ParseError {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error("opening bytes did not match the expected magic number")]
-    MagicMismatch,
 }
 
 impl Parse for QrcFile {

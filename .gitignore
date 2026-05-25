@@ -1,1 +1,7 @@
 /target
+# Qt resource files containing ChomikBox animations.
+*.anim
+# Qt resource files containing ChomikBox themes.
+*.hintskin
+# The installer format used by ChomikBox.
+*.msi

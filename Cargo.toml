@@ -19,6 +19,8 @@ package.repository = "https://github.com/ArchitecturalDogSoftware/chomik"
 package.publish = false
 
 [workspace.dependencies]
+qrc_parse = { version = "*", path = "./lib/qrc_parse/" }
+chomik_parse = { version = "*", path = "./lib/chomik_extract/" }
 thiserror = "2.0"
 tracing = "0.1"
 

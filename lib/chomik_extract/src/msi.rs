@@ -4,6 +4,7 @@ use std::num::NonZero;
 use cab::Cabinet;
 use msi::{Expr, Package, Select};
 
+#[must_use]
 fn invalid_data(reason: &str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, reason)
 }
@@ -25,6 +26,7 @@ struct Filename {
 }
 
 impl Filename {
+    #[must_use]
     fn name(&self) -> &str {
         self.long_name.as_deref().unwrap_or(self.short_name.as_ref())
     }
@@ -90,6 +92,7 @@ impl AnimFile {
             .collect()
     }
 
+    #[must_use]
     pub fn filename(&self) -> &str {
         self.name.name()
     }
@@ -126,14 +129,17 @@ pub struct File<'r, R: Read + Seek> {
 }
 
 impl<'r, R: Read + Seek> File<'r, R> {
+    #[must_use]
     pub fn filename(&self) -> &str {
         self.name.name()
     }
 
+    #[must_use]
     pub fn into_reader(self) -> impl 'r + Seek + Read {
         self.reader
     }
 
+    #[must_use]
     pub fn as_reader(&mut self) -> &mut (impl 'r + Seek + Read) {
         &mut self.reader
     }

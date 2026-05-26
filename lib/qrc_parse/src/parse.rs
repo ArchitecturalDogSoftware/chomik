@@ -30,6 +30,7 @@ macro_rules! read {
 pub const SUPPORTED_VERSIONS: std::ops::Range<u32> = 1 .. 2;
 
 /// Detects whether the given value is a magic number used by zlib.
+#[must_use]
 const fn is_zlib(magic: u16) -> bool {
     /// Every magic number listed as associated with zlib by <https://en.wikipedia.org/wiki/List_of_file_signatures>.
     const ZLIB_MAGIC_NUMBERS: [u16; 8] = [0x78_01, 0x78_5E, 0x78_9C, 0x78_DA, 0x78_20, 0x78_7D, 0x78_BB, 0x78_F9];
@@ -281,18 +282,22 @@ impl Node {
     /// Indicates that this is an uncompressed file.
     const FLAG_NONE: u16 = 0;
 
+    #[must_use]
     const fn is_none(&self) -> bool {
         self.flag == Self::FLAG_NONE
     }
 
+    #[must_use]
     const fn is_compressed(&self) -> bool {
         self.flag == Self::FLAG_COMPRESSED
     }
 
+    #[must_use]
     const fn is_directory(&self) -> bool {
         self.flag == Self::FLAG_DIRECTORY
     }
 
+    #[must_use]
     const fn is_compressed_zstd(&self) -> bool {
         self.flag == Self::FLAG_COMPRESSED_ZSTD
     }

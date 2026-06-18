@@ -1,14 +1,162 @@
 #![feature(read_array)]
 #![feature(seek_stream_len)] // Should I?
 
-use std::io::{Read, Seek};
+use std::char;
+use std::collections::{HashMap, HashSet};
+use std::io::{Read, Result, Seek};
 
-pub mod parse;
+use crate::parse::Parse;
 
-pub struct AnimFile;
+mod parse;
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
+enum NodeData {
+    Directory { children: Box<[Node]> },
+    File { data: Box<[u8]> },
+}
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
+struct Node {
+    name: Box<str>,
+    data: NodeData,
+}
+
+impl Node {
+    fn convert_node(from: &parse::Node, parsed: &parse::QrcFile) -> Result<Self> {
+        let name = self::get_name(parsed, from.names_idx)?;
+        let data = match from.data {
+            parse::NodeData::Directory { child_count, first_child_idx } => {
+                NodeData::Directory { children: Box::new([]) }
+            }
+            parse::NodeData::File { country, language, files_idx } => {
+                NodeData::File { data: parsed.files[files_idx as usize].data.data.clone() }
+            }
+        };
+
+        Ok(Self { name, data })
+    }
+
+    fn files_impl<'n>(&'n self, directory_stack: &mut Vec<&'n str>, out: &mut Vec<File<'n>>) {
+        match &self.data {
+            NodeData::Directory { children } => {
+                directory_stack.push(self.name.as_ref());
+                for file in children {
+                    file.files_impl(directory_stack, out);
+                }
+                directory_stack.pop();
+            }
+            NodeData::File { data } => {
+                out.push(File { name: self.name.as_ref(), dir: directory_stack.join("/").into_boxed_str(), data });
+            }
+        }
+    }
+
+    pub fn files(&self) -> Box<[File<'_>]> {
+        let mut out = Vec::new();
+        // Start with the leading slash that `.join("/")` wouldn't give.
+        let mut directory_stack = vec!["/"];
+
+        self.files_impl(&mut directory_stack, &mut out);
+
+        out.into_boxed_slice()
+    }
+}
+
+pub struct File<'n> {
+    name: &'n str,
+    dir: Box<str>,
+    data: &'n [u8],
+}
+
+impl<'n> File<'n> {
+    pub fn name(&self) -> &'n str {
+        self.name
+    }
+
+    pub fn dir(&self) -> &str {
+        &self.dir
+    }
+
+    pub fn path(&self) -> Box<str> {
+        format!("{}/{}", self.dir, self.name).into_boxed_str()
+    }
+
+    pub fn data(&self) -> &[u8] {
+        self.data
+    }
+}
+
+pub struct AnimFile {
+    top_level: Box<[Node]>,
+}
 
 impl AnimFile {
-    pub fn parse<R: Seek + Read>(reader: R) -> std::io::Result<Self> {
-        todo!()
+    pub fn parse<R: Seek + Read>(mut reader: R) -> Result<Self> {
+        let parsed = parse::QrcFile::parse(&mut reader).map_err(|e| match e {
+            parse::ParseError::Io(error) => error,
+            _ => std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()),
+        })?;
+
+        let mut top_level: HashMap<u32, Node> = HashMap::new();
+        let mut visited_addrs: HashSet<u32> = HashSet::new();
+
+        parsed.tree.iter().try_for_each::<_, Result<()>>(|n| {
+            if let Some(node) = self::visit(n, &parsed, &mut top_level, &mut visited_addrs)? {
+                top_level.insert(n.original_addr, node);
+            }
+
+            Ok(())
+        })?;
+
+        Ok(Self { top_level: top_level.into_values().collect() })
     }
+
+    pub fn files(&self) -> Box<[File<'_>]> {
+        self.top_level.iter().flat_map(Node::files).collect()
+    }
+}
+
+fn visit(
+    node: &parse::Located<parse::Node>,
+    parsed: &parse::QrcFile,
+    top_level: &mut HashMap<u32, Node>,
+    visited_addrs: &mut HashSet<u32>,
+) -> Result<Option<Node>> {
+    if !visited_addrs.insert(node.original_addr) {
+        return Ok(None);
+    }
+
+    let mut new_node = Node::convert_node(&node.data, parsed)?;
+
+    if let parse::NodeData::Directory { child_count, first_child_idx } = &node.data.data {
+        let children: Box<[Node]> = parsed.tree[*first_child_idx as usize ..][.. *child_count as usize]
+            .iter()
+            .map(|n| {
+                top_level.remove(&n.original_addr);
+                self::visit(n, parsed, top_level, visited_addrs).and_then(|maybe| {
+                    // Should this be the case, or can a node appear in multiple directories?
+                    maybe.ok_or_else(|| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, "directory includes already-visited file")
+                    })
+                })
+            })
+            .collect::<Result<_>>()?;
+
+        new_node.data = NodeData::Directory { children };
+    }
+
+    Ok(Some(new_node))
+}
+
+fn get_name(parsed: &parse::QrcFile, names_idx: u32) -> Result<Box<str>> {
+    let name: &parse::Filename = &parsed.names[names_idx as usize].data;
+
+    char::decode_utf16(name.name.iter().copied()) //
+        .collect::<std::result::Result<_, char::DecodeUtf16Error>>()
+        .map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid UTF-16 codepoint at name index {names_idx}"),
+            )
+        })
 }

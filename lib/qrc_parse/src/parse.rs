@@ -2,6 +2,7 @@ use std::io::{Read, Seek};
 
 use thiserror::Error;
 
+// TO-DO: endianness?
 /// A convenience macro to read data from an <code>impl [Read]</code>.
 macro_rules! read {
     // Specializes on byte slices for performance.
@@ -92,30 +93,30 @@ pub enum ParseError {
 
 /// The opening bytes of a Qt resource file, identifying it and providing metadata.
 #[derive(Debug)]
-struct Header {
+pub struct Header {
     /// The magic number at the start of the file. Must be equal to [`Self::MAGIC`].
-    magic: [u8; 4],
+    pub magic: [u8; 4],
     /// The Qt resource file format version.
     ///
     /// This only parses [`SUPPORTED_VERSIONS`].
-    version: u32,
+    pub version: u32,
     /// The byte address in the file where the [tree][`Node`] begins.
     ///
     /// This is not a trusted value.
-    tree_addr: u32,
+    pub tree_addr: u32,
     /// The byte address in the file where the [files][`File`] begin.
     ///
     /// This is not a trusted value.
-    files_addr: u32,
+    pub files_addr: u32,
     /// The byte address in the file where the [filenames][`Filename`] begin.
     ///
     /// This is not a trusted value.
-    names_addr: u32,
+    pub names_addr: u32,
 }
 
 impl Header {
     /// The magic number that identifies a Qt resource file.
-    const MAGIC: [u8; 4] = *b"qres";
+    pub const MAGIC: [u8; 4] = *b"qres";
 }
 
 impl Parse for Header {
@@ -150,17 +151,17 @@ impl Parse for Header {
 ///
 /// May or may not be compressed.
 #[derive(Debug)]
-struct File {
+pub struct File {
     /// The length of the file in bytes. This includes [`Self::decompressed_len`] if present, so [`Self::data`] will be
     /// [`size_of::<u32>()`][`size_of`] bytes smaller if [`Self`] is compressed.
-    len: u32,
+    pub len: u32,
     /// If [`Self::data`] is compressed, this is the reported length of the decompressed data.
     ///
     /// This is not a trusted value.
-    decompressed_len: Option<u32>,
+    pub decompressed_len: Option<u32>,
     /// The actual data of a file. Should be of length [`Self::len`] if [`Self::decompressed_len`] is [`None`], or
     /// <code>[Self::len] - [size_of::<u32>()][`size_of`]</code> if it is [`Some`].
-    data: Box<[u8]>,
+    pub data: Box<[u8]>,
 }
 
 impl Parse for File {
@@ -185,15 +186,15 @@ impl Parse for File {
 }
 
 #[derive(Debug)]
-struct Filename {
+pub struct Filename {
     /// The number of [`u16`]s in [`Self::name`]. Does not include [`Self::hash`].
-    len: u16,
+    pub len: u16,
     /// A hash of something, presumably of [`Self::name`] or the file.
     ///
     /// I have not investigated this at all.
-    hash: u32,
+    pub hash: u32,
     /// The UTF-16 bytes of the filename. Should be of length [`Self::len`].
-    name: Box<[u16]>,
+    pub name: Box<[u16]>,
 }
 
 impl Parse for Filename {
@@ -210,7 +211,7 @@ impl Parse for Filename {
 
 /// The data held by a [`Node`], representing either a directory or a file.
 #[derive(Debug)]
-enum NodeData {
+pub enum NodeData {
     /// A directory in this Qt resource file's filesystem.
     Directory {
         /// The number of children in this directory.
@@ -232,7 +233,7 @@ enum NodeData {
         ///
         /// I have not investigated this at all.
         language: u16,
-        /// The index of from the start of [files][`File`] where the first child can be found.
+        /// The index from the start of [files][`File`] where the first child can be found.
         ///
         /// This is not a trusted value.
         files_idx: u32,
@@ -241,20 +242,20 @@ enum NodeData {
 
 /// A node in a Qt resource file's filesystem tree.
 #[derive(Debug)]
-struct Node {
+pub struct Node {
     // TO-DO: I don't think this is correct?
     /// The index of from the start of [files][`File`] where this file's name can be found.
     ///
     /// This is not a trusted value.
-    names_idx: u32,
+    pub names_idx: u32,
     /// A flag that indicates the type of [`NodeData`] this is.
     ///
     /// Can be one of: [`Self::FLAG_NONE`], [`Self::FLAG_COMPRESSED`], [`Self::FLAG_DIRECTORY`], or
     /// [`Self::FLAG_COMPRESSED_ZSTD`]. This field also may also be bit flags, in which case it may be combination of
     /// those value. I am not yet sure whether these are discrete values or bit flags.
-    flag: u16,
+    pub flag: u16,
     /// The actual data held by this node.
-    data: NodeData,
+    pub data: NodeData,
 }
 
 impl Parse for Node {
@@ -283,33 +284,33 @@ impl Node {
     const FLAG_NONE: u16 = 0;
 
     #[must_use]
-    const fn is_none(&self) -> bool {
+    pub const fn is_none(&self) -> bool {
         self.flag == Self::FLAG_NONE
     }
 
     #[must_use]
-    const fn is_compressed(&self) -> bool {
+    pub const fn is_compressed(&self) -> bool {
         self.flag == Self::FLAG_COMPRESSED
     }
 
     #[must_use]
-    const fn is_directory(&self) -> bool {
+    pub const fn is_directory(&self) -> bool {
         self.flag == Self::FLAG_DIRECTORY
     }
 
     #[must_use]
-    const fn is_compressed_zstd(&self) -> bool {
+    pub const fn is_compressed_zstd(&self) -> bool {
         self.flag == Self::FLAG_COMPRESSED_ZSTD
     }
 }
 
 /// Holds some data alongside the byte address within the file where it was original located.
 #[derive(Debug)]
-struct Located<T: ?Sized> {
+pub struct Located<T: ?Sized> {
     /// The byte address within the file where [`Self::data`] original started.
-    original_addr: u32,
+    pub original_addr: u32,
     /// The data parsed, starting from [`Self::original_addr`].
-    data: T,
+    pub data: T,
 }
 
 impl<T: Parse> Parse for Located<T> {
@@ -327,10 +328,10 @@ impl<T: Parse> Parse for Located<T> {
 /// A Qt resource file.
 #[derive(Debug)]
 pub struct QrcFile {
-    header: Header,
-    files: Box<[Located<File>]>,
-    names: Box<[Located<Filename>]>,
-    tree: Box<[Located<Node>]>,
+    pub header: Header,
+    pub files: Box<[Located<File>]>,
+    pub names: Box<[Located<Filename>]>,
+    pub tree: Box<[Located<Node>]>,
 }
 
 impl Parse for QrcFile {

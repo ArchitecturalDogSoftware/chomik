@@ -100,15 +100,15 @@ pub struct Header {
     ///
     /// This only parses [`SUPPORTED_VERSIONS`].
     pub version: u32,
-    /// The byte address in the file where the [tree][`Node`] begins.
+    /// The byte address in the file where the [tree][`QrcFile::tree`] begins.
     ///
     /// This is not a trusted value.
     pub tree_addr: u32,
-    /// The byte address in the file where the [files][`File`] begin.
+    /// The byte address in the file where the [files][`QrcFile::files`] begin.
     ///
     /// This is not a trusted value.
     pub files_addr: u32,
-    /// The byte address in the file where the [filenames][`Filename`] begin.
+    /// The byte address in the file where the [filenames][`QrcFile::names`] begin.
     ///
     /// This is not a trusted value.
     pub names_addr: u32,
@@ -152,6 +152,7 @@ impl Parse for Header {
 /// May or may not be compressed.
 #[derive(Debug)]
 pub struct File {
+    // TO-DO: is this actually a trusted value?
     /// The length of the file in bytes. This includes [`Self::decompressed_len`] if present, so [`Self::data`] will be
     /// [`size_of::<u32>()`][`size_of`] bytes smaller if [`Self`] is compressed.
     pub len: u32,
@@ -218,7 +219,8 @@ pub enum NodeData {
         ///
         /// This is not a trusted value.
         child_count: u32,
-        /// The index of [names][`Filename`] where the first child can be found.
+        // TO-DO: this is very likely an offset as well.
+        /// The index of [`QrcFile::names`] where the first child can be found.
         ///
         /// This is not a trusted value.
         first_child_idx: u32,
@@ -233,21 +235,20 @@ pub enum NodeData {
         ///
         /// I have not investigated this at all.
         language: u16,
-        /// The index from the start of [files][`File`] where the first child can be found.
+        /// The offset in bytes from the start of [`QrcFile::files`] where the first child can be found.
         ///
         /// This is not a trusted value.
-        files_idx: u32,
+        files_offset: u32,
     },
 }
 
 /// A node in a Qt resource file's filesystem tree.
 #[derive(Debug)]
 pub struct Node {
-    // TO-DO: I don't think this is correct?
-    /// The index of from the start of [files][`File`] where this file's name can be found.
+    /// The offset in bytes from the start of [`QrcFile::names`] where this file's name can be found.
     ///
     /// This is not a trusted value.
-    pub names_idx: u32,
+    pub names_offset: u32,
     /// A flag that indicates the type of [`NodeData`] this is.
     ///
     /// Can be one of: [`Self::FLAG_NONE`], [`Self::FLAG_COMPRESSED`], [`Self::FLAG_DIRECTORY`], or
@@ -265,10 +266,10 @@ impl Parse for Node {
         let data = if flag == Self::FLAG_DIRECTORY {
             NodeData::Directory { child_count: read!(input, u32), first_child_idx: read!(input, u32) }
         } else {
-            NodeData::File { country: read!(input, u16), language: read!(input, u16), files_idx: read!(input, u32) }
+            NodeData::File { country: read!(input, u16), language: read!(input, u16), files_offset: read!(input, u32) }
         };
 
-        Ok(Self { names_idx: names_offset, flag, data })
+        Ok(Self { names_offset, flag, data })
     }
 }
 
@@ -329,8 +330,17 @@ impl<T: Parse> Parse for Located<T> {
 #[derive(Debug)]
 pub struct QrcFile {
     pub header: Header,
+    /// The actual data of the contained files.
+    ///
+    /// Arranged in ascending order of [`Located::original_addr`].
     pub files: Box<[Located<File>]>,
+    /// The names of the contained files.
+    ///
+    /// Arranged in ascending order of [`Located::original_addr`].
     pub names: Box<[Located<Filename>]>,
+    /// The nodes which represent each contained file, ready to be parsed into a directory tree.
+    ///
+    /// Arranged in ascending order of [`Located::original_addr`].
     pub tree: Box<[Located<Node>]>,
 }
 

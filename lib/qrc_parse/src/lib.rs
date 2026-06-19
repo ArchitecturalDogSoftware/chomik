@@ -9,13 +9,13 @@ use crate::parse::Parse;
 
 mod parse;
 
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 enum NodeData {
     Directory { children: Box<[Node]> },
     File { data: Box<[u8]> },
 }
 
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct Node {
     name: Box<str>,
     data: NodeData,
@@ -23,14 +23,22 @@ struct Node {
 
 impl Node {
     fn convert_node(from: &parse::Node, parsed: &parse::QrcFile) -> Result<Self> {
-        let name = self::get_name(parsed, from.names_idx)?;
+        let name = self::get_name(parsed, from.names_offset)?;
         let data = match from.data {
             parse::NodeData::Directory { child_count, first_child_idx } => {
                 NodeData::Directory { children: Box::new([]) }
             }
-            parse::NodeData::File { country, language, files_idx } => {
-                NodeData::File { data: parsed.files[files_idx as usize].data.data.clone() }
-            }
+            parse::NodeData::File { country, language, files_offset } => NodeData::File {
+                data: self::get_by_offset(&parsed.files, files_offset)
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "no file at QRC file tree node's file offset",
+                        )
+                    })?
+                    .data
+                    .clone(),
+            },
         };
 
         Ok(Self { name, data })
@@ -53,8 +61,8 @@ impl Node {
 
     pub fn files(&self) -> Box<[File<'_>]> {
         let mut out = Vec::new();
-        // Start with the leading slash that `.join("/")` wouldn't give.
-        let mut directory_stack = vec!["/"];
+        // Make sure that `.join("/")` actually adds a leading slash.
+        let mut directory_stack = vec![""];
 
         self.files_impl(&mut directory_stack, &mut out);
 
@@ -148,15 +156,23 @@ fn visit(
     Ok(Some(new_node))
 }
 
-fn get_name(parsed: &parse::QrcFile, names_idx: u32) -> Result<Box<str>> {
-    let name: &parse::Filename = &parsed.names[names_idx as usize].data;
+fn get_name(parsed: &parse::QrcFile, names_offset: u32) -> Result<Box<str>> {
+    let name: &parse::Filename = self::get_by_offset(&parsed.names, names_offset).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "no filename at QRC file tree node's filename offset")
+    })?;
 
     char::decode_utf16(name.name.iter().copied()) //
         .collect::<std::result::Result<_, char::DecodeUtf16Error>>()
         .map_err(|_| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("invalid UTF-16 codepoint at name index {names_idx}"),
+                format!("invalid UTF-16 codepoint at name index {names_offset}"),
             )
         })
+}
+
+fn get_by_offset<T>(arr: &[parse::Located<T>], offset: u32) -> Option<&T> {
+    let addr = offset + arr.first()?.original_addr;
+    let idx = arr.binary_search_by_key(&addr, |v| v.original_addr).ok()?;
+    Some(&arr.get(idx).expect("`binary_search_by_key` should always return a valid index").data)
 }

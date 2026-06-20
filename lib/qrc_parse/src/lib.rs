@@ -95,6 +95,7 @@ impl<'n> File<'n> {
 }
 
 pub struct AnimFile {
+    /// The children of the root node.
     top_level: Box<[Node]>,
 }
 
@@ -105,18 +106,20 @@ impl AnimFile {
             _ => std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()),
         })?;
 
-        let mut top_level: HashMap<u32, Node> = HashMap::new();
-        let mut visited_addrs: HashSet<u32> = HashSet::new();
+        let top_level = if let Some(first) = parsed.tree.first() {
+            let NodeData::Directory { children } = self::visit(first, &parsed)?.data else {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "root node in file tree is a file (expected a directory)",
+                ));
+            };
 
-        parsed.tree.iter().try_for_each::<_, Result<()>>(|n| {
-            if let Some(node) = self::visit(n, &parsed, &mut top_level, &mut visited_addrs)? {
-                top_level.insert(n.original_addr, node);
-            }
+            children
+        } else {
+            Box::new([])
+        };
 
-            Ok(())
-        })?;
-
-        Ok(Self { top_level: top_level.into_values().collect() })
+        Ok(Self { top_level })
     }
 
     pub fn files(&self) -> Box<[File<'_>]> {
@@ -124,36 +127,19 @@ impl AnimFile {
     }
 }
 
-fn visit(
-    node: &parse::Located<parse::Node>,
-    parsed: &parse::QrcFile,
-    top_level: &mut HashMap<u32, Node>,
-    visited_addrs: &mut HashSet<u32>,
-) -> Result<Option<Node>> {
-    if !visited_addrs.insert(node.original_addr) {
-        return Ok(None);
-    }
-
+fn visit(node: &parse::Located<parse::Node>, parsed: &parse::QrcFile) -> Result<Node> {
     let mut new_node = Node::convert_node(&node.data, parsed)?;
 
     if let parse::NodeData::Directory { child_count, first_child_idx } = &node.data.data {
         let children: Box<[Node]> = parsed.tree[*first_child_idx as usize ..][.. *child_count as usize]
             .iter()
-            .map(|n| {
-                top_level.remove(&n.original_addr);
-                self::visit(n, parsed, top_level, visited_addrs).and_then(|maybe| {
-                    // Should this be the case, or can a node appear in multiple directories?
-                    maybe.ok_or_else(|| {
-                        std::io::Error::new(std::io::ErrorKind::InvalidData, "directory includes already-visited file")
-                    })
-                })
-            })
+            .map(|n| self::visit(n, parsed))
             .collect::<Result<_>>()?;
 
         new_node.data = NodeData::Directory { children };
     }
 
-    Ok(Some(new_node))
+    Ok(new_node)
 }
 
 fn get_name(parsed: &parse::QrcFile, names_offset: u32) -> Result<Box<str>> {

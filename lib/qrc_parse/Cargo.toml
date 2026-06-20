@@ -13,3 +13,4 @@ workspace = true
 
 [dependencies]
 thiserror.workspace = true
+zlib-rs = "0.6.3"

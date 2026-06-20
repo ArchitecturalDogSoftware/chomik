@@ -8,13 +8,13 @@ use crate::parse::Parse;
 
 mod parse;
 
-#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 enum NodeData {
     Directory { children: Box<[Node]> },
-    File { data: Box<[u8]> },
+    File { compression_type: CompressionType, data: Box<[u8]> },
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 struct Node {
     name: Box<str>,
     data: NodeData,
@@ -25,17 +25,24 @@ impl Node {
         let name = self::get_name(parsed, from.names_offset)?;
         let data = match from.data {
             parse::NodeData::Directory { .. } => NodeData::Directory { children: Box::new([]) },
-            parse::NodeData::File { files_offset, .. } => NodeData::File {
-                data: self::get_by_offset(&parsed.files, files_offset)
-                    .ok_or_else(|| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            "no file at QRC file tree node's file offset",
-                        )
-                    })?
-                    .data
-                    .clone(),
-            },
+            parse::NodeData::File { files_offset, .. } => {
+                let file = self::get_by_offset(&parsed.files, files_offset).ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, "no file at QRC file tree node's file offset")
+                })?;
+                let compression_type = if !from.is_compressed() {
+                    CompressionType::None
+                } else if from.is_compressed_zlib() {
+                    CompressionType::Zlib {
+                        decompressed_len: file
+                            .decompressed_len
+                            .expect("a compressed file should always have a `decompressed_len`"),
+                    }
+                } else {
+                    unreachable!("Qt resource files of format version 1 can only be compressed with zlib")
+                };
+
+                NodeData::File { compression_type, data: file.data.clone() }
+            }
         };
 
         Ok(Self { name, data })
@@ -50,8 +57,13 @@ impl Node {
                 }
                 directory_stack.pop();
             }
-            NodeData::File { data } => {
-                out.push(File { name: self.name.as_ref(), dir: directory_stack.join("/").into_boxed_str(), data });
+            NodeData::File { compression_type, data } => {
+                out.push(File {
+                    name: self.name.as_ref(),
+                    dir: directory_stack.join("/").into_boxed_str(),
+                    compression_type: *compression_type,
+                    data,
+                });
             }
         }
     }
@@ -71,6 +83,7 @@ impl Node {
 pub struct File<'n> {
     name: &'n str,
     dir: Box<str>,
+    compression_type: CompressionType,
     data: &'n [u8],
 }
 
@@ -90,10 +103,64 @@ impl<'n> File<'n> {
         format!("{}/{}", self.dir, self.name).into_boxed_str()
     }
 
+    /// Returns the raw bytes stored in the Qt resource file. If [`Self::compression_type()`] is
+    /// [`CompressionType::None`], this is the actual data of the file. Otherwise, it's the compressed data.
     #[must_use]
-    pub const fn data(&self) -> &[u8] {
+    pub const fn raw_data(&self) -> &[u8] {
         self.data
     }
+
+    #[must_use]
+    pub const fn compression_type(&self) -> CompressionType {
+        self.compression_type
+    }
+
+    #[must_use]
+    pub fn decompressed_data(&self) -> std::result::Result<Box<[u8]>, DecompressionError> {
+        match self.compression_type {
+            CompressionType::None => Ok(self.data.into()),
+            CompressionType::Zlib { decompressed_len } => {
+                let mut buf = vec![0_u8; decompressed_len as usize];
+
+                let (decompressed, rc) =
+                    zlib_rs::decompress_slice(&mut buf, self.data, zlib_rs::InflateConfig::default());
+
+                match rc {
+                    zlib_rs::ReturnCode::Ok => (),
+                    zlib_rs::ReturnCode::BufError => return Err(DecompressionError::BadDecompressedLength),
+                    _ => return Err(DecompressionError::Zlib(rc)),
+                }
+
+                // `decompressed` is a subslice of `buf`. As long as we sanity check that it begins at the same
+                // place as `buf`, truncating `buf` to be the same length should mean that they
+                // become equal.
+                let start_addr = decompressed.as_ptr();
+                let len = decompressed.len();
+                if start_addr != buf.as_ptr() {
+                    return Err(DecompressionError::BadOutput);
+                }
+                buf.truncate(len);
+
+                Ok(buf.into_boxed_slice())
+            }
+        }
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum DecompressionError {
+    #[error("decompression returned unexpected subslice")]
+    BadOutput,
+    #[error("QRC file provided an inaccurate length of decompressed data")]
+    BadDecompressedLength,
+    #[error("decompression failed with code {0:?}")]
+    Zlib(zlib_rs::ReturnCode),
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum CompressionType {
+    None,
+    Zlib { decompressed_len: u32 },
 }
 
 #[derive(Debug, Hash, PartialEq, Eq)]

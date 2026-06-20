@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io::BufReader;
-use std::path::Path;
 
 fn main() -> std::io::Result<()> {
     let mut args = std::env::args();
@@ -12,7 +11,7 @@ fn main() -> std::io::Result<()> {
 
     let parsed = qrc_parse::AnimFile::parse(BufReader::new(file))?;
     for file in parsed.files() {
-        println!("{} ({} bytes)", file.path(), file.data().len());
+        println!("{} ({} bytes)", file.path(), file.raw_data().len());
     }
 
     Ok(())

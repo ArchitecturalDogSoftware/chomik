@@ -26,7 +26,7 @@ macro_rules! read {
 
 /// The range of support Qt resource file format versions.
 ///
-/// Currently, only version one is supported, but there are more.
+/// Currently, only version 1 is supported, but there are more.
 pub const SUPPORTED_VERSIONS: std::ops::Range<u32> = 1 .. 2;
 
 /// Detects whether the given value is a magic number used by zlib.
@@ -97,7 +97,15 @@ pub struct Header {
     pub magic: [u8; 4],
     /// The Qt resource file format version.
     ///
-    /// This only parses [`SUPPORTED_VERSIONS`].
+    /// From digging through the source code archives for Qt, the format versions have changed in the following Qt
+    /// versions:
+    ///
+    /// - Version 1: Up through Qt 5.7.1.
+    /// - Version 2: Qt 5.8.0 through Qt 5.12.12.
+    /// - Version 3: Qt 5.13.0 and beyond (currently 6.11.1).
+    ///
+    /// This crate only parses [`SUPPORTED_VERSIONS`], but this could grow to support newer versions if anybody reaches
+    /// out with an interest.
     pub version: u32,
     /// The byte address in the file where the [tree][`QrcFile::tree`] begins.
     ///
@@ -218,7 +226,6 @@ pub enum NodeData {
         ///
         /// This is not a trusted value.
         child_count: u32,
-        // TO-DO: this is very likely an offset as well.
         /// The index of [`QrcFile::names`] where the first child can be found.
         ///
         /// This is not a trusted value.
@@ -248,11 +255,11 @@ pub struct Node {
     ///
     /// This is not a trusted value.
     pub names_offset: u32,
-    /// A flag that indicates the type of [`NodeData`] this is.
+    /// Bit flags that indicates the type of [`NodeData`] this is and whether it is compressed.
     ///
-    /// Can be one of: [`Self::FLAG_NONE`], [`Self::FLAG_COMPRESSED`], [`Self::FLAG_DIRECTORY`], or
-    /// [`Self::FLAG_COMPRESSED_ZSTD`]. This field also may also be bit flags, in which case it may be combination of
-    /// those value. I am not yet sure whether these are discrete values or bit flags.
+    /// For Qt resource file format version 1, the only flags are [`Self::FLAG_COMPRESSED_ZLIB`], indicating that the
+    /// referenced data is compressed, and [`Self::FLAG_DIRECTORY`], that it is a directory (i.e., not a file). It's
+    /// unclear whether or not having both present at once would be an error, but it at least wouldn't have an effect.
     pub flag: u16,
     /// The actual data held by this node.
     pub data: NodeData,
@@ -274,33 +281,38 @@ impl Parse for Node {
 
 impl Node {
     /// Indicates that the file is compressed with zlib.
-    const FLAG_COMPRESSED: u16 = 1;
-    /// Indicates that the file is compressed with Zstandard.
-    const FLAG_COMPRESSED_ZSTD: u16 = 4;
+    ///
+    /// Qt resource file format versions 2 and above also support zstd compression, but this crate currently only parses
+    /// version 1.
+    const FLAG_COMPRESSED_ZLIB: u16 = 1;
     /// Indicates that this is a directory node, not file.
     const FLAG_DIRECTORY: u16 = 2;
-    // TO-DO: is this true?
-    /// Indicates that this is an uncompressed file.
-    const FLAG_NONE: u16 = 0;
 
+    /// Whether or not this file is compressed with zlib.
+    ///
+    /// Compression has no effect on directories, but this only checks that the zlib compression flag is set (ignoring
+    /// the directory flag).
     #[must_use]
-    pub const fn is_none(&self) -> bool {
-        self.flag == Self::FLAG_NONE
+    pub const fn is_compressed_zlib(&self) -> bool {
+        self.flag & Self::FLAG_COMPRESSED_ZLIB != 0
     }
 
+    /// Whether or not this file is compressed with zlib.
+    ///
+    /// Compression has no effect on directories, but this only checks that the zlib compression flag is set (ignoring
+    /// the directory flag).
+    ///
+    /// Qt resource file format versions 2 and above also support zstd compression, but this crate currently only parses
+    /// version 1.
     #[must_use]
     pub const fn is_compressed(&self) -> bool {
-        self.flag == Self::FLAG_COMPRESSED
+        self.is_compressed_zlib()
     }
 
+    /// Returns true if this node is a directory, or false if it is a file.
     #[must_use]
     pub const fn is_directory(&self) -> bool {
-        self.flag == Self::FLAG_DIRECTORY
-    }
-
-    #[must_use]
-    pub const fn is_compressed_zstd(&self) -> bool {
-        self.flag == Self::FLAG_COMPRESSED_ZSTD
+        self.flag & Self::FLAG_DIRECTORY != 0
     }
 }
 

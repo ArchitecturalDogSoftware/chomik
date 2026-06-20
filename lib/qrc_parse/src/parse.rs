@@ -2,7 +2,6 @@ use std::io::{Read, Seek};
 
 use thiserror::Error;
 
-// TO-DO: endianness?
 /// A convenience macro to read data from an <code>impl [Read]</code>.
 macro_rules! read {
     // Specializes on byte slices for performance.

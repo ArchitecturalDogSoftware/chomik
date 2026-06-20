@@ -2,7 +2,6 @@
 #![feature(seek_stream_len)] // Should I?
 
 use std::char;
-use std::collections::{HashMap, HashSet};
 use std::io::{Read, Result, Seek};
 
 use crate::parse::Parse;
@@ -25,10 +24,8 @@ impl Node {
     fn convert_node(from: &parse::Node, parsed: &parse::QrcFile) -> Result<Self> {
         let name = self::get_name(parsed, from.names_offset)?;
         let data = match from.data {
-            parse::NodeData::Directory { child_count, first_child_idx } => {
-                NodeData::Directory { children: Box::new([]) }
-            }
-            parse::NodeData::File { country, language, files_offset } => NodeData::File {
+            parse::NodeData::Directory { .. } => NodeData::Directory { children: Box::new([]) },
+            parse::NodeData::File { files_offset, .. } => NodeData::File {
                 data: self::get_by_offset(&parsed.files, files_offset)
                     .ok_or_else(|| {
                         std::io::Error::new(
@@ -59,6 +56,7 @@ impl Node {
         }
     }
 
+    #[must_use]
     pub fn files(&self) -> Box<[File<'_>]> {
         let mut out = Vec::new();
         // Make sure that `.join("/")` actually adds a leading slash.
@@ -77,19 +75,23 @@ pub struct File<'n> {
 }
 
 impl<'n> File<'n> {
-    pub fn name(&self) -> &'n str {
+    #[must_use]
+    pub const fn name(&self) -> &'n str {
         self.name
     }
 
+    #[must_use]
     pub fn dir(&self) -> &str {
         &self.dir
     }
 
+    #[must_use]
     pub fn path(&self) -> Box<str> {
         format!("{}/{}", self.dir, self.name).into_boxed_str()
     }
 
-    pub fn data(&self) -> &[u8] {
+    #[must_use]
+    pub const fn data(&self) -> &[u8] {
         self.data
     }
 }
@@ -123,6 +125,7 @@ impl AnimFile {
         Ok(Self { top_level })
     }
 
+    #[must_use]
     pub fn files(&self) -> Box<[File<'_>]> {
         self.top_level.iter().flat_map(Node::files).collect()
     }
@@ -158,6 +161,7 @@ fn get_name(parsed: &parse::QrcFile, names_offset: u32) -> Result<Box<str>> {
         })
 }
 
+#[must_use]
 fn get_by_offset<T>(arr: &[parse::Located<T>], offset: u32) -> Option<&T> {
     let addr = offset + arr.first()?.original_addr;
     let idx = arr.binary_search_by_key(&addr, |v| v.original_addr).ok()?;

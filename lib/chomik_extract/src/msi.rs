@@ -146,11 +146,13 @@ impl<'r, R: Read + Seek> File<'r, R> {
 }
 
 pub struct Cabinets<R: Read + Seek> {
+    /// Must be kept around, otherwise a [`std::rc::Weak`] allows the data backing [`Self::cabinets`] to be dropped.
+    _package: Package<R>,
     cabinets: Box<[(EmbeddedCabinet, Cabinet<msi::StreamReader<R>>)]>,
 }
 
 impl<R: Read + Seek> Cabinets<R> {
-    fn new(package: &mut Package<R>, cabinets: Box<[EmbeddedCabinet]>) -> Result<Self> {
+    fn new(mut package: Package<R>, cabinets: Box<[EmbeddedCabinet]>) -> Result<Self> {
         Ok(Self {
             cabinets: cabinets
                 .into_iter()
@@ -159,6 +161,7 @@ impl<R: Read + Seek> Cabinets<R> {
                     Ok((cabinet, parsed))
                 })
                 .collect::<Result<_>>()?,
+            _package: package,
         })
     }
 
@@ -177,7 +180,7 @@ pub fn extract_anims<R: Read + Seek>(msi: R) -> Result<(Box<[AnimFile]>, Cabinet
     let mut package = Package::open(msi)?;
     let files = AnimFile::list(&mut package)?;
     let embedded_cabinets = EmbeddedCabinet::list(&mut package)?;
-    let cabinets = Cabinets::new(&mut package, embedded_cabinets)?;
+    let cabinets = Cabinets::new(package, embedded_cabinets)?;
 
     Ok((files, cabinets))
 }

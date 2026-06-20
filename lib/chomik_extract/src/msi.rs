@@ -9,14 +9,14 @@ fn invalid_data(reason: &str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, reason)
 }
 
-fn extract_non_zero_u32(row: &msi::Row, table: &str, column: &str) -> Result<NonZero<u32>> {
-    row[column]
+fn extract_non_zero_u32(row: &msi::Row, key: &str) -> Result<NonZero<u32>> {
+    row[key]
         .as_int()
-        .ok_or_else(|| self::invalid_data(format!("`{table}.{column}` should be an integer").as_str()))?
+        .ok_or_else(|| self::invalid_data(format!("`{key}` should be an integer").as_str()))?
         .try_into()
         .ok()
         .and_then(NonZero::new)
-        .ok_or_else(|| self::invalid_data(format!("`{table}.{column}` should be >=1").as_str()))
+        .ok_or_else(|| self::invalid_data(format!("`{key}` should be >=1").as_str()))
 }
 
 #[derive(Clone)]
@@ -62,17 +62,17 @@ impl AnimFile {
                         Select::table("Component"),
                         Expr::col("File.Component_").eq(Expr::col("Component.Component")),
                     )
-                    .with(Expr::col("Directory_").eq(Expr::string("ANIMDIR")))
-                    .columns(&["File", "FileName", "FileSize", "Sequence"]),
+                    .with(Expr::col("Component.Directory_").eq(Expr::string("ANIMDIR")))
+                    .columns(&["File.File", "File.FileName", "File.FileSize", "File.Sequence"]),
             )?
             .map(|row| {
                 Ok(Self {
-                    id: row["File"]
+                    id: row["File.File"]
                         .as_str()
                         .ok_or_else(|| self::invalid_data("`File.FileName` should be a string identifier"))?
                         .to_string(),
                     name: {
-                        let str = row["FileName"]
+                        let str = row["File.FileName"]
                             .as_str()
                             .ok_or_else(|| self::invalid_data("`File.FileName` should be a string"))?;
                         let (short, long) = str //
@@ -81,12 +81,12 @@ impl AnimFile {
 
                         Filename { short_name: short.to_string(), long_name: long.map(str::to_string) }
                     },
-                    size: row["FileSize"]
+                    size: row["File.FileSize"]
                         .as_int()
                         .ok_or_else(|| self::invalid_data("`File.FileSize` should be an integer"))?
                         .try_into()
                         .map_err(|_| self::invalid_data("`File.FileSize` should be non-negative"))?,
-                    sequence_no: self::extract_non_zero_u32(&row, "File", "Sequence")?,
+                    sequence_no: self::extract_non_zero_u32(&row, "File.Sequence")?,
                 })
             })
             .collect()
@@ -114,7 +114,7 @@ impl EmbeddedCabinet {
 
             Ok(Self {
                 id: if cabinet_name.starts_with('#') { cabinet_name.split_at(1).1 } else { "" }.to_string(),
-                last_sequence_no: self::extract_non_zero_u32(&row, "Media", "LastSequence")?,
+                last_sequence_no: self::extract_non_zero_u32(&row, "LastSequence")?,
             })
         })
         // An empty identifier at this point means that it's either not embedded or just weird. 

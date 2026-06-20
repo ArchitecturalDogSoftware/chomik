@@ -169,7 +169,7 @@ impl<R: Read + Seek> Cabinets<R> {
             )?;
 
         // Short or long? Both?
-        Ok(File { name: file.name.clone(), reader: cabinet.read_file(file.name.short_name.as_str())? })
+        Ok(File { name: file.name.clone(), reader: cabinet.read_file(file.name.name())? })
     }
 }
 

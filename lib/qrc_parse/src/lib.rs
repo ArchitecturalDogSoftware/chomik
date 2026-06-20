@@ -94,6 +94,7 @@ impl<'n> File<'n> {
     }
 }
 
+#[derive(Debug, Hash, PartialEq, Eq)]
 pub struct AnimFile {
     /// The children of the root node.
     top_level: Box<[Node]>,

@@ -13,7 +13,7 @@ fn main() -> std::io::Result<()> {
     for anim in extracted {
         println!("{}", anim.filename());
         for file in anim.files() {
-            println!("    {} ({} bytes)", file.path(), file.data().len());
+            println!("    {} ({} bytes)", file.path(), file.raw_data().len());
         }
     }
 

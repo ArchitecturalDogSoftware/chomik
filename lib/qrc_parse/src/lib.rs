@@ -211,12 +211,12 @@ pub enum CompressionType {
 
 /// The contents of a Qt resource file.
 #[derive(Debug, Hash, PartialEq, Eq)]
-pub struct AnimFile {
+pub struct QrcFile {
     /// The children of the root node.
     top_level: Box<[Node]>,
 }
 
-impl AnimFile {
+impl QrcFile {
     /// Parse a Qt resource resource file, extracting the files embedded within.
     ///
     /// # Errors

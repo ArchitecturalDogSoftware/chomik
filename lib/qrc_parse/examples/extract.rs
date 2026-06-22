@@ -9,7 +9,7 @@ fn main() -> std::io::Result<()> {
     };
     let file = File::open(&path)?;
 
-    let parsed = qrc_parse::AnimFile::parse(BufReader::new(file))?;
+    let parsed = qrc_parse::QrcFile::parse(BufReader::new(file))?;
     for file in parsed.files() {
         println!("{} ({} bytes)", file.path(), file.raw_data().len());
     }

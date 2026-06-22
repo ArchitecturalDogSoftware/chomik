@@ -5,7 +5,7 @@ mod msi;
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct AnimFile {
     filename: Box<str>,
-    parsed: qrc_parse::AnimFile,
+    parsed: qrc_parse::QrcFile,
 }
 
 impl AnimFile {
@@ -27,7 +27,7 @@ pub fn extract_anims<R: Seek + Read>(msi: R) -> Result<Box<[AnimFile]>> {
     for file in anim_files {
         parsed.push(AnimFile {
             filename: file.filename().into(),
-            parsed: qrc_parse::AnimFile::parse(cabinets.get_file(&file)?.into_reader())?,
+            parsed: qrc_parse::QrcFile::parse(cabinets.get_file(&file)?.into_reader())?,
         });
     }
 

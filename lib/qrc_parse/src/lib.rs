@@ -3,6 +3,7 @@
 
 use std::char;
 use std::io::{Read, Result, Seek};
+use std::pin::Pin;
 
 use crate::parse::Parse;
 
@@ -115,12 +116,14 @@ impl<'n> File<'n> {
         self.compression_type
     }
 
-    #[must_use]
     pub fn decompressed_data(&self) -> std::result::Result<Box<[u8]>, DecompressionError> {
         match self.compression_type {
             CompressionType::None => Ok(self.data.into()),
             CompressionType::Zlib { decompressed_len } => {
-                let mut buf = vec![0_u8; decompressed_len as usize];
+                // Buffer must be pinned so that `buf_start` can be used to compare its starting location without
+                // needing to drop the mutable reference to it that `decompress_slice` will return.
+                let mut buf: Pin<Vec<u8>> = Pin::new(vec![0_u8; decompressed_len as usize]);
+                let buf_start: *const u8 = buf.as_ptr();
 
                 let (decompressed, rc) =
                     zlib_rs::decompress_slice(&mut buf, self.data, zlib_rs::InflateConfig::default());
@@ -131,17 +134,18 @@ impl<'n> File<'n> {
                     _ => return Err(DecompressionError::Zlib(rc)),
                 }
 
-                // `decompressed` is a subslice of `buf`. As long as we sanity check that it begins at the same
-                // place as `buf`, truncating `buf` to be the same length should mean that they
-                // become equal.
-                let start_addr = decompressed.as_ptr();
-                let len = decompressed.len();
-                if start_addr != buf.as_ptr() {
-                    return Err(DecompressionError::BadOutput);
+                // `decompressed` is a subslice of `buf`. As long as we sanity check that it begins at the same place as
+                // `buf`, truncating `buf` to be the same length should mean that they become equal. If that's not the
+                // case, we can still fall back to copying.
+                if decompressed.as_ptr() != buf_start {
+                    return Ok(decompressed.into());
                 }
-                buf.truncate(len);
 
-                Ok(buf.into_boxed_slice())
+                let len = decompressed.len();
+                let mut unpinned: Vec<u8> = Pin::into_inner(buf);
+                unpinned.truncate(len);
+
+                Ok(unpinned.into_boxed_slice())
             }
         }
     }
@@ -149,8 +153,6 @@ impl<'n> File<'n> {
 
 #[derive(thiserror::Error, Debug)]
 pub enum DecompressionError {
-    #[error("decompression returned unexpected subslice")]
-    BadOutput,
     #[error("QRC file provided an inaccurate length of decompressed data")]
     BadDecompressedLength,
     #[error("decompression failed with code {0:?}")]

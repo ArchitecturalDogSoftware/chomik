@@ -1,6 +1,19 @@
 #![feature(read_array)]
 #![feature(seek_stream_len)] // Should I?
 
+//! # `qrc_parse`
+//!
+//! `qrc_parse` is a parser for [Qt resource files](https://doc.qt.io/archives/qt-5.7/qresource.html).
+//!
+//! `qrc_parse` has a somewhat limited API --- Qt resource file format version 1 only and does not expose the filesystem
+//! tree (only a flat list of files) --- but I would be happy to support more use cases on request.
+//!
+//! ## Examples
+//!
+//! ```no_run
+#![doc = include_str!("../examples/extract.rs")]
+//! ```
+
 use std::char;
 use std::io::{Read, Result, Seek};
 use std::pin::Pin;
@@ -81,24 +94,32 @@ impl Node {
     }
 }
 
+/// A file embedded within a Qt resource file.
 pub struct File<'n> {
+    /// The filename.
     name: &'n str,
+    /// The directory (composed as a path starting with and containing (but not ending with) forward slashes.
     dir: Box<str>,
+    /// Whether and how the file is compressed.
     compression_type: CompressionType,
+    /// The possibly compressed bytes of the file.
     data: &'n [u8],
 }
 
 impl<'n> File<'n> {
+    /// The filename.
     #[must_use]
     pub const fn name(&self) -> &'n str {
         self.name
     }
 
+    /// The directory (composed as a path starting with and containing (but not ending with) forward slashes.
     #[must_use]
     pub fn dir(&self) -> &str {
         &self.dir
     }
 
+    /// The full path to the file, containing the [directory][`Self::dir()`] and [filename][`Self::name()`].
     #[must_use]
     pub fn path(&self) -> Box<str> {
         format!("{}/{}", self.dir, self.name).into_boxed_str()
@@ -111,11 +132,23 @@ impl<'n> File<'n> {
         self.data
     }
 
+    /// Whether and how the file is compressed.
     #[must_use]
     pub const fn compression_type(&self) -> CompressionType {
         self.compression_type
     }
 
+    /// An owned copy of the data if [`Self::compression_type()`] is [`CompressionType::None`], or the result of
+    /// decompressing the data otherwise.
+    ///
+    /// # Errors
+    ///
+    /// - Never returns an error if [`Self::compression_type()`] is [`CompressionType::None`].
+    /// - Never returns a [`DecompressionError::Zlib`] of [`zlib_rs::ReturnCode::Ok`] or
+    ///   [`zlib_rs::ReturnCode::BufError`].
+    /// - Returns [`DecompressionError::BadDecompressedLength`] if the expected length of the decompressed data reported
+    ///   by the source Qt resource file was wrong.
+    /// - Returns a [`DecompressionError::Zlib`] if an error occurred while decompressing data compressed with zlib.
     pub fn decompressed_data(&self) -> std::result::Result<Box<[u8]>, DecompressionError> {
         match self.compression_type {
             CompressionType::None => Ok(self.data.into()),
@@ -151,20 +184,32 @@ impl<'n> File<'n> {
     }
 }
 
+/// An error that may occur in the process of decompressing data found in a Qt resource file.
 #[derive(thiserror::Error, Debug)]
 pub enum DecompressionError {
+    /// The source Qt resource file reported length of the compressed data when decompressed was inaccurate.
     #[error("QRC file provided an inaccurate length of decompressed data")]
     BadDecompressedLength,
+    /// An error raised by [`zlib_rs`].
+    ///
+    /// This will never be [`zlib_rs::ReturnCode::Ok`] or [`zlib_rs::ReturnCode::BufError`].
     #[error("decompression failed with code {0:?}")]
     Zlib(zlib_rs::ReturnCode),
 }
 
+/// Whether and how a file in a Qt resource file is compressed.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum CompressionType {
+    /// The file is not compressed, so the bytes of data in the Qt resource file are exactly the contents of the file.
     None,
-    Zlib { decompressed_len: u32 },
+    /// The file is compressed using zlib, so the bytes of data in the Qt resource file must be decompressed.
+    Zlib {
+        /// The expected length of the compressed data when decompressed, as reported by the source Qt resource file.
+        decompressed_len: u32,
+    },
 }
 
+/// The contents of a Qt resource file.
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct AnimFile {
     /// The children of the root node.
@@ -172,6 +217,12 @@ pub struct AnimFile {
 }
 
 impl AnimFile {
+    /// Parse a Qt resource resource file, extracting the files embedded within.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if [reading][`Read`] or [seeking][`Seek`] the input fails, or if the input is not a valid Qt
+    /// resource file.
     pub fn parse<R: Seek + Read>(mut reader: R) -> Result<Self> {
         let parsed = parse::QrcFile::parse(&mut reader).map_err(|e| match e {
             parse::ParseError::Io(error) => error,
@@ -194,6 +245,7 @@ impl AnimFile {
         Ok(Self { top_level })
     }
 
+    /// Returns a flattened list of the files that were embedded within the parsed Qt resource file.
     #[must_use]
     pub fn files(&self) -> Box<[File<'_>]> {
         self.top_level.iter().flat_map(Node::files).collect()

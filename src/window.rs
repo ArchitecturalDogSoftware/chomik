@@ -85,5 +85,6 @@ fn create_default_window() -> Window {
         prefers_home_indicator_hidden: true,
         prefers_status_bar_hidden: true,
         preferred_screen_edges_deferring_system_gestures: ScreenEdge::None,
+        borderless_game: false,
     }
 }

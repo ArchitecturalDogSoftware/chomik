@@ -15,4 +15,6 @@ workspace = true
 cab = "0.6.0"
 msi = "0.10.0"
 qrc_parse.workspace = true
+# serde = { version = "1.0.228", features = ["derive"] }
 thiserror.workspace = true
+xml = "1.3.0"

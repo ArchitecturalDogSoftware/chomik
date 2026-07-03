@@ -1,9 +1,73 @@
+use std::collections::HashMap;
 use std::io::Read;
+use std::rc::Rc;
 use std::str::FromStr;
 
 // use serde::Deserialize;
 use xml::EventReader;
 use xml::reader::XmlEvent;
+
+use crate::AnimFile;
+
+pub struct AnimContents<'anim_file> {
+    pub name: Box<str>,
+    pub animations: Box<[Animation]>,
+    pub jpegs: HashMap<&'anim_file str, Rc<[u8]>>,
+}
+
+const XML_MAGICS: [&[u8]; 2] = [b"<?xml", b"\xEF\xBB\xBF<?xml"];
+const JPEG_MAGICS: [&[u8]; 3] = [
+    [0xFF, 0xD8, 0xFF].as_slice(),
+    [0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20, 0x0D, 0x0A, 0x87, 0x0A].as_slice(),
+    [0xFF, 0x4F, 0xFF, 0x51].as_slice(),
+];
+
+pub fn extract_files(extract_from: &AnimFile) -> Result<AnimContents<'_>, ()> {
+    enum FileType {
+        Jpeg,
+        Xml,
+    }
+
+    let (xml, mut jpegs) = extract_from
+        .files()
+        .into_iter()
+        .map(|f| {
+            let data = f.decompressed_data().unwrap();
+            if XML_MAGICS.iter().any(|magic| data.starts_with(magic)) {
+                Ok((FileType::Xml, f.name(), data))
+            } else if JPEG_MAGICS.iter().any(|magic| data.starts_with(magic)) {
+                Ok((FileType::Jpeg, f.name(), data))
+            } else {
+                dbg!(data);
+                Err(())
+            }
+        })
+        .try_fold((None, HashMap::<&str, Rc<[u8]>>::new()), |(mut xml, mut jpegs): (_, _), v| {
+            let (ft, filename, data) = v?;
+            match ft {
+                FileType::Jpeg => {
+                    jpegs.insert(filename, Rc::from(data));
+                }
+                FileType::Xml => {
+                    if let Some((prev_filename, _)) = xml {
+                        panic!(
+                            "`.anim` file contains multiple XML files (tried to overwrite '{prev_filename}' with \
+                             '{filename}')",
+                        )
+                    }
+                    // println!("```\n{}\n```", str::from_utf8(data.as_ref()).unwrap());
+
+                    xml = Some((filename, data));
+                }
+            }
+            Ok((xml, jpegs))
+        })?;
+
+    let (_, data) = xml.unwrap();
+    let (name, animations) = self::parse(data.as_ref()).unwrap();
+
+    Ok(AnimContents { name, animations, jpegs })
+}
 
 // #[derive(Debug)]
 pub struct Animation {
@@ -92,17 +156,17 @@ macro_rules! apply_attributes {
 
 #[derive(Debug, Default)]
 pub struct Conditions {
-    idle: Option<bool>,
-    mouse_press: Option<bool>,
-    file_over: Option<bool>,
-    file_drop: Option<bool>,
-    duration: Option<u64>,
-    exit_immediately: Option<bool>,
-    player_playing: Option<bool>,
-    screenshot: Option<bool>,
-    typing: Option<bool>,
-    probability: Option<u64>,
-    priority: Option<u64>,
+    pub idle: Option<bool>,
+    pub mouse_press: Option<bool>,
+    pub file_over: Option<bool>,
+    pub file_drop: Option<bool>,
+    pub duration: Option<u64>,
+    pub exit_immediately: Option<bool>,
+    pub player_playing: Option<bool>,
+    pub screenshot: Option<bool>,
+    pub typing: Option<bool>,
+    pub probability: Option<u64>,
+    pub priority: Option<u64>,
 }
 
 dbg_inline!(impl red, none for Conditions {
@@ -180,7 +244,7 @@ impl Way {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum State {
     State1,
     State2,
@@ -207,7 +271,7 @@ impl FromStr for State {
     }
 }
 
-pub fn parse<R: Read>(xml_file: R) -> Result<(Box<str>, Box<[Animation]>), xml::reader::Error> {
+fn parse<R: Read>(xml_file: R) -> Result<(Box<str>, Box<[Animation]>), xml::reader::Error> {
     let config = xml::ParserConfig::new()
         .trim_whitespace(true)
         .cdata_to_characters(true)

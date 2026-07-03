@@ -176,6 +176,7 @@ impl<R: Read + Seek> Cabinets<R> {
     }
 }
 
+// TO-DO: should this check the hash?
 pub fn extract_anims<R: Read + Seek>(msi: R) -> Result<(Box<[AnimFile]>, Cabinets<R>)> {
     let mut package = Package::open(msi)?;
     let files = AnimFile::list(&mut package)?;

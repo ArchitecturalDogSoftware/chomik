@@ -2016,6 +2016,8 @@ name = "chomik"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "chomik_extract",
+ "image",
  "thiserror 2.0.18",
  "tracing",
 ]

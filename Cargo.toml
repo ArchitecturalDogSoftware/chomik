@@ -19,7 +19,7 @@ package.repository = "https://github.com/ArchitecturalDogSoftware/chomik"
 package.publish = false
 
 [workspace.dependencies]
-chomik_parse = { path = "./lib/chomik_extract/", version = "*" }
+chomik_extract = { path = "./lib/chomik_extract/", version = "*" }
 qrc_parse = { path = "./lib/qrc_parse/", version = "*" }
 image = { version = "0.25.10", default-features = false, features = ["rayon", "jpeg"] }
 thiserror = "2.0"
@@ -34,6 +34,8 @@ clippy.multiple_crate_versions = "allow"  # Inevitable with a Bevy project.
 
 [dependencies]
 bevy = { version = "0.19", default-features = false, features = ["2d"] }
+chomik_extract.workspace = true
+image.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

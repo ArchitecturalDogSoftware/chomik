@@ -1,17 +1,11 @@
-use bevy::app::{App, AppExit, Startup};
-
+mod animations;
 mod window;
 
-mod capability {}
-
-fn main() -> AppExit {
-    let mut application = App::new();
+fn main() {
+    let mut application = bevy::app::App::new();
 
     crate::window::init(&mut application);
+    crate::animations::init(&mut application);
 
-    application.add_systems(Startup, crate::init).run()
-}
-
-fn init() {
-    tracing::info!("Made with spiders 🕷️🕸️🏳️‍⚧️");
+    application.run();
 }

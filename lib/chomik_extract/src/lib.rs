@@ -13,6 +13,8 @@ use std::io::{Read, Seek};
 use std::rc::Rc;
 use std::time::Duration;
 
+use image::GenericImageView;
+
 mod msi;
 mod xml;
 
@@ -83,6 +85,38 @@ pub struct Image {
     pub alpha: Jpeg,
 }
 
+impl Image {
+    pub fn to_rgba(&self) -> image::ImageResult<image::RgbaImage> {
+        let decode_jpeg = |bytes: &[u8]| -> image::ImageResult<image::DynamicImage> {
+            image::DynamicImage::from_decoder(image::codecs::jpeg::JpegDecoder::new(std::io::Cursor::new(bytes))?)
+        };
+
+        let color = decode_jpeg(self.color.data.as_ref())?;
+        let alpha = decode_jpeg(self.alpha.data.as_ref())?;
+
+        let (width, height) = color.dimensions();
+
+        let mut rgba = image::RgbaImage::new(width, height);
+        rgba.pixels_mut().zip(color.pixels()).zip(alpha.pixels()).for_each(|((rgba, (_, _, color)), (_, _, alpha))| {
+            *rgba = color;
+
+            #[expect(clippy::missing_panics_doc, reason = "see `expect` reason")]
+            #[expect(clippy::cast_possible_truncation, reason = "sum of 3 `u8`s divided by 3 cannot exceed `u8::MAX`")]
+            let alpha_average = {
+                let rgb: &[u8; 3] = alpha.0.first_chunk::<3>().expect("RGBA images have > 3 channels");
+                // Larger type to avoid overflow.
+                let sum: u16 = rgb.iter().fold(0, |acc, &v| acc + u16::from(v));
+
+                (sum / 3) as u8
+            };
+
+            rgba[3] = alpha_average;
+        });
+
+        Ok(rgba)
+    }
+}
+
 impl std::fmt::Debug for Image {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Image").field("asset_name", &self.asset_name).finish_non_exhaustive()
@@ -97,6 +131,14 @@ pub struct Sequence {
     pub images: Box<[Image]>,
 }
 
+impl Sequence {
+    pub fn to_frames(&self) -> image::ImageResult<Box<[image::Frame]>> {
+        let delay_20_fps = image::Delay::from_numer_denom_ms(1000, 20);
+
+        self.images.iter().map(|image| Ok(image::Frame::from_parts(image.to_rgba()?, 0, 0, delay_20_fps))).collect()
+    }
+}
+
 pub struct AnimationSet {
     /// Triggered by the application being clicked by the mouse, intended to animate dragging the window around.
     pub mouse_press: Animation,
@@ -104,7 +146,7 @@ pub struct AnimationSet {
     ///
     /// Should loop until the file is either no longer over the application or has been dropped on the application. If
     /// the file was dropped on the application, the looping portion should be allowed to finish, then the exit portion
-    /// is skipped immediately enter the [file drop][`Self::file_drop`] animation.
+    /// is skipped in favor of entering the [file drop][`Self::file_drop`] animation.
     pub file_over: Animation,
     /// Triggered by a file being dropped on the application.
     pub file_drop: Animation,

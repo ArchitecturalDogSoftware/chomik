@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+image.workspace = true
 cab = "0.6.0"
 msi = "0.10.0"
 qrc_parse.workspace = true

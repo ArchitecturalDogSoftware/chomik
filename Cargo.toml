@@ -21,7 +21,7 @@ package.publish = false
 [workspace.dependencies]
 chomik_parse = { path = "./lib/chomik_extract/", version = "*" }
 qrc_parse = { path = "./lib/qrc_parse/", version = "*" }
-image = "0.25.10"
+image = { version = "0.25.10", default-features = false, features = ["rayon", "jpeg"] }
 thiserror = "2.0"
 tracing = "0.1"
 

@@ -139,6 +139,7 @@ impl Sequence {
     }
 }
 
+#[derive(Debug)]
 pub struct AnimationSet {
     /// Triggered by the application being clicked by the mouse, intended to animate dragging the window around.
     pub mouse_press: Animation,
@@ -212,6 +213,7 @@ impl AnimationSet {
     }
 }
 
+#[derive(Debug)]
 pub enum Animation {
     OneShot(OneShotAnimation),
     Looping(LoopingAnimation),
@@ -225,11 +227,13 @@ impl TryFrom<AnimFile> for Animation {
     }
 }
 
+#[derive(Debug)]
 pub struct OneShotAnimation {
     pub name: Box<str>,
     pub sequence: Sequence,
 }
 
+#[derive(Debug)]
 pub struct LoopingAnimation {
     pub name: Box<str>,
     pub entrance: Sequence,

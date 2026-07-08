@@ -36,6 +36,7 @@ clippy.multiple_crate_versions = "allow"  # Inevitable with a Bevy project.
 bevy = { version = "0.19", default-features = false, features = ["2d"] }
 chomik_extract.workspace = true
 image.workspace = true
+rand = "0.10.2"
 thiserror.workspace = true
 tracing.workspace = true
 

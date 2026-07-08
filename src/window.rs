@@ -1,7 +1,10 @@
 use bevy::DefaultPlugins;
-use bevy::app::{App, PluginGroup};
+use bevy::app::{App, PluginGroup, Update};
 use bevy::camera::ClearColor;
 use bevy::color::Color;
+use bevy::ecs::system::{Query, Res};
+use bevy::input::ButtonInput;
+use bevy::input::mouse::MouseButton;
 use bevy::math::Vec2;
 use bevy::window::{
     CompositeAlphaMode, EnabledButtons, ExitCondition, InternalWindowState, PresentMode, ScreenEdge, Window,
@@ -20,6 +23,7 @@ pub fn init(application: &mut App) {
         unfocused_mode: UpdateMode::Continuous,
     });
     application.insert_resource(ClearColor(Color::NONE));
+    application.add_systems(Update, self::drag_window);
 }
 
 #[expect(clippy::cast_precision_loss, reason = "the window size should never be large enough")]
@@ -86,5 +90,15 @@ fn create_default_window() -> Window {
         prefers_status_bar_hidden: true,
         preferred_screen_edges_deferring_system_gestures: ScreenEdge::None,
         borderless_game: false,
+    }
+}
+
+// Doesn't seem to work reliably, but it's better than nothing.
+#[expect(clippy::needless_pass_by_value, reason = "`Res` is used for querying")]
+fn drag_window(input: Res<ButtonInput<MouseButton>>, mut windows: Query<&mut Window>) {
+    if input.just_pressed(MouseButton::Left) {
+        for mut window in windows.iter_mut() {
+            window.start_drag_move();
+        }
     }
 }

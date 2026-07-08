@@ -11,13 +11,18 @@ pub fn init(application: &mut App) {
 }
 
 #[expect(clippy::needless_pass_by_value, reason = "`Res` is used for querying")]
-fn startup(mut commands: Commands, asset_server: Res<AssetServer>, mut windows: Query<&mut Window>) {
+fn startup(
+    settings: Res<crate::settings::Settings>,
+    asset_server: Res<AssetServer>,
+    mut commands: Commands,
+    windows: Query<&mut Window>,
+) {
     tracing::info!("Made with spiders 🕷️🕸️🏳️‍⚧️");
 
     commands.spawn(Camera2d);
 
     let animations = chomik_extract::AnimationSet::extract_from_msi(std::io::BufReader::new(
-        std::fs::File::open("./ChomikBox.msi").unwrap(),
+        std::fs::File::open(settings.msi_path.as_path()).unwrap(),
     ))
     .unwrap();
 

@@ -1976,6 +1976,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "carp"
+version = "0.1.0"
+source = "git+https://github.com/Jaxydog/carp#55ddd4376514a13a79158c8bc611641f864e2fa1"
+
+[[package]]
 name = "cc"
 version = "1.2.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2026,6 +2031,7 @@ name = "chomik"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "carp",
  "chomik_extract",
  "image",
  "rand 0.10.2",

@@ -71,6 +71,7 @@ fn create_default_window() -> Window {
         ime_enabled: false,
         ime_position: Vec2::default(),
         window_theme: None,
+        // Set to `true` after assets are loaded.
         visible: false,
         skip_taskbar: false,
         clip_children: true,

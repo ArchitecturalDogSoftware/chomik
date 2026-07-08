@@ -11,7 +11,7 @@ pub fn init(application: &mut App) {
 }
 
 #[expect(clippy::needless_pass_by_value, reason = "`Res` is used for querying")]
-fn startup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn startup(mut commands: Commands, asset_server: Res<AssetServer>, mut windows: Query<&mut Window>) {
     tracing::info!("Made with spiders 🕷️🕸️🏳️‍⚧️");
 
     commands.spawn(Camera2d);
@@ -29,6 +29,10 @@ fn startup(mut commands: Commands, asset_server: Res<AssetServer>) {
         State::default(),
         AnimationTimer::from_fps(20.0),
     ));
+
+    for mut window in windows {
+        window.visible = true;
+    }
 }
 
 #[expect(clippy::needless_pass_by_value, reason = "`Res` is used for querying")]

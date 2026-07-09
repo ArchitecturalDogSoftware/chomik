@@ -57,7 +57,7 @@ fn render_sequence(idx: usize, name: &str, images: impl IntoIterator<Item = Imag
     let out_fname = format!("{idx:02}_{name}.gif");
     assert!(
         Command::new("ffmpeg")
-            .args(["-framerate", "60", "-i", "./frame_%04d.jpg", out_fname.as_ref()])
+            .args(["-framerate", "20", "-i", "./frame_%04d.jpg", out_fname.as_ref()])
             .spawn()
             .unwrap()
             .wait()

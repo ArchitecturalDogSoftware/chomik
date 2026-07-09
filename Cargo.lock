@@ -2037,6 +2037,7 @@ dependencies = [
  "rand 0.10.2",
  "thiserror 2.0.18",
  "tracing",
+ "windows",
 ]
 
 [[package]]

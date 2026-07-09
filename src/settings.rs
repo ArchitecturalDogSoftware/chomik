@@ -22,7 +22,7 @@ fn apply_settings_to_existing_windows(settings: Res<Settings>, windows: Query<&m
         return;
     }
 
-    tracing::trace!("applying settings to windows");
+    tracing::trace!("applying settings to windows: {:?}", settings.as_ref());
 
     for mut window in windows {
         settings.apply(&mut window);
@@ -35,6 +35,8 @@ fn apply_settings_to_new_windows(
     mut new_window_reader: PopulatedMessageReader<WindowCreated>,
     mut windows: Query<&mut Window>,
 ) {
+    tracing::trace!("applying settings to windows: {:?}", settings.as_ref());
+
     for window in new_window_reader.read() {
         tracing::trace!("applying settings to newly created window (ID {})", window.window);
 
@@ -46,7 +48,7 @@ fn apply_settings_to_new_windows(
     }
 }
 
-#[derive(bevy::ecs::resource::Resource)]
+#[derive(Debug, bevy::ecs::resource::Resource)]
 pub struct Settings {
     pub window_level: WindowLevel,
     pub msi_path: PathBuf,
@@ -79,6 +81,14 @@ impl Settings {
                 }
             }
         }
+
+        if let Some(setting) = waiting_on {
+            if setting.must_take_value() {
+                return Err(format!("missing value for argument '{setting}'"));
+            }
+
+            out.assign(setting);
+        };
 
         Ok(out)
     }

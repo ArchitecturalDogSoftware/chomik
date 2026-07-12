@@ -44,6 +44,7 @@ fn startup(
 fn animate_sprite(
     time: Res<Time>,
     animation_set: Res<AnimationSet>,
+    input: Res<ButtonInput<MouseButton>>,
     mut file_dnd_reader: MessageReader<FileDragAndDrop>,
     mut query: Query<(&mut State, &mut AnimationTimer, &mut Sprite)>,
 ) {
@@ -51,7 +52,7 @@ fn animate_sprite(
 
     for (mut state, mut animation_timer, mut sprite) in &mut query {
         animation_timer.tick(time.delta());
-        state.tick(&animation_set, time.delta(), dnd_msg, &animation_timer, &mut sprite);
+        state.tick(&animation_set, time.delta(), &input, dnd_msg, &animation_timer, &mut sprite);
     }
 }
 
@@ -59,6 +60,7 @@ fn animate_sprite(
 enum State {
     Idle(IdleState),
     FileDnd(FileDndState),
+    WindowDrag(WindowDragState),
 }
 
 impl State {
@@ -70,11 +72,22 @@ impl State {
         &mut self,
         animation_set: &AnimationSet,
         delta: Duration,
+        input: &ButtonInput<MouseButton>,
         file_dnd_event: Option<&FileDragAndDrop>,
         // Expected to have already been ticked.
         animation_timer: &AnimationTimer,
         sprite: &mut Sprite,
     ) {
+        if input.just_pressed(MouseButton::Left) {
+            *self = Self::WindowDrag(WindowDragState::grab());
+            return;
+        }
+
+        if input.just_released(MouseButton::Left) {
+            *self = Self::WindowDrag(WindowDragState::drop());
+            return;
+        }
+
         if let Some(file_dnd_event) = file_dnd_event
             && !matches!(self, Self::FileDnd(_))
         {
@@ -85,7 +98,10 @@ impl State {
         let should_return_to_idle = match self {
             Self::Idle(idle_state) => idle_state.tick(&animation_set.idle, delta, animation_timer, sprite),
             Self::FileDnd(file_dnd_state) => {
-                file_dnd_state.tick(&animation_set.file_dnd, file_dnd_event, delta, animation_timer, sprite)
+                file_dnd_state.tick(&animation_set.file_dnd, file_dnd_event, animation_timer, sprite)
+            }
+            Self::WindowDrag(window_drag_state) => {
+                window_drag_state.tick(&animation_set.window_drag, animation_timer, sprite)
             }
         };
 
@@ -229,7 +245,6 @@ impl FileDndState {
         &mut self,
         file_dnd_animations: &FileDndAnimations,
         file_dnd_event: Option<&FileDragAndDrop>,
-        delta: Duration,
         // Expected to have already been ticked.
         animation_timer: &AnimationTimer,
         sprite: &mut Sprite,
@@ -298,11 +313,80 @@ impl FileDndState {
     }
 }
 
+enum WindowDragState {
+    Grab { frame_idx: usize },
+    Looping { frame_idx: usize },
+    Drop { frame_idx: usize },
+}
+
+impl WindowDragState {
+    fn grab() -> Self {
+        Self::Grab { frame_idx: 0 }
+    }
+
+    fn drop() -> Self {
+        Self::Drop { frame_idx: 0 }
+    }
+
+    fn tick(
+        &mut self,
+        window_drag_animations: &WindowDragAnimations,
+        // Expected to have already been ticked.
+        animation_timer: &AnimationTimer,
+        sprite: &mut Sprite,
+    ) -> bool {
+        if !animation_timer.just_finished() {
+            return false;
+        }
+
+        match self {
+            Self::Grab { frame_idx } => {
+                let animation = &window_drag_animations.grab;
+
+                *frame_idx += 1;
+                if *frame_idx == animation.frames.len() {
+                    sprite.image = window_drag_animations.looping.first_image();
+                    *self = Self::Looping { frame_idx: 0 };
+                } else {
+                    sprite.image = animation.get(*frame_idx);
+                }
+
+                false
+            }
+            Self::Looping { frame_idx } => {
+                let animation = &window_drag_animations.looping;
+
+                *frame_idx += 1;
+                if *frame_idx == animation.frames.len() {
+                    *frame_idx = 0;
+                }
+
+                sprite.image = animation.get(*frame_idx);
+
+                false
+            }
+            Self::Drop { frame_idx } => {
+                let animation = &window_drag_animations.drop;
+
+                *frame_idx += 1;
+                if *frame_idx == animation.frames.len() {
+                    return true;
+                }
+
+                sprite.image = animation.get(*frame_idx);
+
+                false
+            }
+        }
+    }
+}
+
 #[derive(Resource)]
 #[component(immutable)]
 struct AnimationSet {
     idle: IdleAnimations,
     file_dnd: FileDndAnimations,
+    window_drag: WindowDragAnimations,
 }
 
 impl AnimationSet {
@@ -310,6 +394,7 @@ impl AnimationSet {
         Self {
             idle: IdleAnimations::from_set(set, asset_server).unwrap(),
             file_dnd: FileDndAnimations::from_set(set, asset_server).unwrap(),
+            window_drag: WindowDragAnimations::from_set(set, asset_server).unwrap(),
         }
     }
 }
@@ -414,6 +499,30 @@ impl FileDndAnimations {
         let drop = Animation::from_sequence(file_drop, asset_server)?;
 
         Ok(Self { hover_start, hover_loop, hover_cancel, drop })
+    }
+}
+
+struct WindowDragAnimations {
+    grab: Animation,
+    looping: Animation,
+    drop: Animation,
+}
+
+impl WindowDragAnimations {
+    fn from_set(
+        chomik_extract::AnimationSet { mouse_press, .. }: &chomik_extract::AnimationSet,
+        asset_server: &AssetServer,
+    ) -> Result<Self, image::ImageError> {
+        let chomik_extract::LoopingAnimation { name: _, entrance, looping, exit } = match mouse_press {
+            chomik_extract::Animation::Looping(file_over) => file_over,
+            _ => panic!("Received one-shot mouse press animation, expected looping animation"),
+        };
+
+        let grab = Animation::from_sequence(entrance, asset_server)?;
+        let looping = Animation::from_sequence(looping, asset_server)?;
+        let drop = Animation::from_sequence(exit, asset_server)?;
+
+        Ok(Self { grab, looping, drop })
     }
 }
 

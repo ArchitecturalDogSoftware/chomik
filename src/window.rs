@@ -94,7 +94,6 @@ fn create_default_window() -> Window {
     }
 }
 
-// Doesn't seem to work reliably, but it's better than nothing.
 #[expect(clippy::needless_pass_by_value, reason = "`Res` is used for querying")]
 fn drag_window(input: Res<ButtonInput<MouseButton>>, mut windows: Query<&mut Window>) {
     if input.just_pressed(MouseButton::Left) {
